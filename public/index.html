@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta http-equiv="X-UA-Compatible" content="ie=edge" />
+  <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.3.1/css/bootstrap.min.css" integrity="sha384-ggOyR0iXCbMQv3Xipma34MD+dH/1fQ784/j6cY/iJTQUOhcWr7x9JvoRxT2MZw1T"
+    crossorigin="anonymous" />
+  <link rel="stylesheet" href="https://use.fontawesome.com/releases/v5.7.2/css/all.css" integrity="sha384-fnmOCqbTlWIlj8LyTjo7mOUStjsKC4pOpQbqyi7RrhN7udi9RwhKkMHpvLbHG9Sr"
+    crossorigin="anonymous" />
+  <title>Document</title>
+</head>
+<!-- /////////////////////////////////////////////   -END HEAD-   ///////////////////////////////////////////////////// -->
+
+<body>
+  <audio id="correct" src="https://www.soundjay.com/button/button-37.wav" autostart="false"></audio>
+  <audio id="wrong" src="https://www.soundjay.com/button/button-10.wav" autostart="false"></audio>
+  <div id="app">
+    <nav class="navbar navbar-light bg-light mb-5">
+      <span class="navbar-brand mb-0 h1">Hangman</span>
+    </nav>
+    <header v-if="!loaded">
+      <img src="https://11points.com/wp-content/uploads/2012/09/dominatehangman-1600.jpg" alt="">
+      <br>
+      <a href="#" class='btn btn-lg btn-secondary' @click="">Search for an opponent</i></a>
+      <a href="#" class='btn btn-lg btn-secondary' v-on:click="startAgainstBot">Play against computer</i></a>
+      <br>
+      <div class="spinner-border mt-3" role="status" v-if="loading">
+        <span class="sr-only">Loading...</span>
+      </div>
+    </header>
+
+    <div id="game" v-if="loaded">
+      <div id="hangman">
+        <i class="far fa-circle hangman-body-part"></i>
+        <div class="hangman-body-part" id="neck"></div>
+      </div>
+      <div id="game-info">
+        <div>
+          <div class="alerts">
+            <div v-if="gameStatus.won" class="alert alert-success" role="alert">
+              You won!
+            </div>
+            <div v-if="gameStatus.lost" class="alert alert-danger" role="alert">
+              You lost...
+            </div>
+          </div>
+        </div>
+        <!-- CORRECT WORD TO TYPE -->
+        <div id="correct-letters" class="mb-3">
+          <h2>Time: {{mins}}:{{secs}}</h2>
+          <br>
+          <span v-for="(letter, index) in word" :key="index" :ref="letter" class="correct-letter">
+            <span class="underline">
+              {{letter}}
+            </span>
+          </span>
+        </div>
+        <!-- USER KEYPAD -->
+        <div id="letters" class="mt-5">
+          <span v-for="(letter, index) in alphabet" class="letter" :key="index" :ref="`letter${index}`" @click="checkLetter(letter, index)">{{letter}}</span>
+        </div>
+        <button class="btn btn-secondary btn-lg mt-4" v-if="gameStatus.won || gameStatus.lost" @click="restartGame">Play
+          Again</button>
+      </div>
+    </div>
+  </div>
+</body>
+<!-- /////////////////////////////////////////////   -END BODY-   ///////////////////////////////////////////////////// -->
+<script src="https://code.jquery.com/jquery-3.3.1.slim.min.js" integrity="sha384-q8i/X+965DzO0rT7abK41JStQIAqVgRVzpbzo5smXKp4YfRvH+8abtTE1Pi6jizo"
+  crossorigin="anonymous"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/popper.js/1.14.7/umd/popper.min.js" integrity="sha384-UO2eT0CpHqdSJQ6hJty5KVphtPhzWj9WO1clHTMGa3JDZwrnQq4sF86dIHNDz0W1"
+  crossorigin="anonymous"></script>
+<script src="https://stackpath.bootstrapcdn.com/bootstrap/4.3.1/js/bootstrap.min.js" integrity="sha384-JjSmVgyd0p3pXB1rRibZUAYoIIy6OrQ6VrjIEaFf/nJGzIxFDsf4x0xIM+B07jRM"
+  crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/vue/dist/vue.js"></script>
+
+<script src="/socket.io/socket.io.js"></script>
+
+</html>
+<!-- /////////////////////////////////////////////   -END SCRIPT IMPORTS-   ///////////////////////////////////////////////////// -->
+<script>
+  var socket = io.connect("http://localhost:8080");
+  var timer;
+  var app = new Vue({
+    el: "#app",
+    data: {
+      loading: false,
+      loaded: true,
+      word: 'hey',
+      correctLetters: [],
+      gameStatus: {
+        running: false,
+        won: false,
+        lost: false,
+      },
+      mins: 0,
+      secs: 50,
+      correctLetters: [],
+      alphabet: ["a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", "p",
+        "q", "r", "s", "t", "u", "v", "w", "x", "y", "z"
+      ]
+    },
+    mounted() {
+      socket.on('loaded', () => {
+        this.loading = false
+        this.loaded = true
+      })
+    },
+    watch: {
+      correctLetters(newVal, oldVal) {
+        if (newVal.length === this.word.length && this.secs != 0) {
+          this.gameWon()
+        }
+      },
+      secs: function (newVal, oldVal) {
+        if (oldVal === 1 && this.mins !== 0) {
+          this.secs = 60;
+          this.mins -= 1;
+        } else if (this.mins === 0 && this.secs === 1) {
+          window.clearInterval(timer);
+          this.gameStatus.running = false
+          this.secs = 0;
+        } else if (this.mins === 0 && this.secs === 0 && !this.gameStatus.won) {
+          this.gameLost()
+        }
+      }
+    },
+    methods: {
+      startAgainstBot() {
+        socket.emit("startAgainstBot");
+        this.loading = true
+      },
+      checkLetter(letter, i) {
+        console.log(this.$refs)
+        // this.$refs.letter[0].style.color = '#666'
+
+        if (!this.gameStatus.running && this.secs != 0) {
+          this.gameStatus.running = true
+          timer = setInterval(() => {
+            this.secs--
+          }, 100);
+        }
+        let letterIndex = 'letter' + i
+        if (this.word.includes(this.alphabet[i])) {
+          this.correctLetters.push(this.alphabet[i])
+          this.$refs[letterIndex][0].style.background = "#4ae26e"
+          document.getElementById('correct').play()
+        } else {
+          document.getElementById('wrong').play()
+          this.$refs[letterIndex][0].style.background = "#bf2846"
+        }
+      },
+      gameWon() {
+        window.clearInterval(timer);
+        this.gameStatus.running = false
+        this.gameStatus.won = true
+        this.mins = 0
+        this.secs = 0
+      },
+      gameLost() {
+        window.clearInterval(timer);
+        this.gameStatus.running = false
+        this.gameStatus.lost = true
+        this.mins = 0
+        this.secs = 0
+      },
+      restartGame() {
+        this.mins = 0
+        this.secs = 50
+      }
+    },
+  });
+</script>
+<style>
+  img {
+    height: 200px;
+    pointer-events: none;
+
+  }
+
+  header {
+    text-align: center
+  }
+
+  #letters {
+    display: grid;
+    grid-template-columns: repeat(4, 60px);
+    grid-template-rows: auto;
+    grid-gap: .6rem;
+    width: 40%;
+  }
+
+  .letter {
+    background: #1c73ff;
+    border-radius: 50%;
+    color: #f7f7f7;
+    font-size: 1.8rem;
+    text-align: center;
+    cursor: pointer;
+  }
+
+  #game {
+    display: flex;
+    justify-content: space-between;
+    padding: 0 20% 0 20%;
+  }
+
+  #hangman {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    color: #666;
+    font-weight: bold;
+    font-size: 3.3rem;
+  }
+
+  #neck {
+    height: 90px;
+    width: 8px;
+    background: #666;
+  }
+
+  .letter:hover {
+    opacity: .8;
+  }
+
+  .correct-letter {
+    font-size: 2rem;
+    letter-spacing: 2rem;
+    margin-right: 1rem;
+    color: white;
+    -webkit-user-select: none;
+    -moz-user-select: none;
+    user-select: none;
+  }
+
+  .underline {
+    border-bottom: 1px solid #666;
+  }
+
+  .correct {
+    color: #666;
+  }
+
+  .alerts {
+    width: 40%;
+  }
+</style>
